@@ -391,6 +391,10 @@ class LaunchConfiguration(resource.Resource):
         'InstanceType': {'Type': 'String',
                          'Required': True},
         'KeyName': {'Type': 'String'},
+        'SubnetId' : {'Type': 'String',
+                     'Required' : False},
+        'NetworkInterfaces': {'Type': 'List'},
+
         'UserData': {'Type': 'String'},
         'SecurityGroups': {'Type': 'List'},
         'KernelId': {'Type': 'String',
