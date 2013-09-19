@@ -27,6 +27,30 @@ from heat.common import template_format
 from heat.engine import parser
 from heat.openstack.common import uuidutils
 
+wp_template = '''
+{
+  "AWSTemplateFormatVersion" : "2010-09-09",
+  "Description" : "WordPress",
+  "Parameters" : {
+    "KeyName" : {
+      "Description" : "KeyName",
+      "Type" : "String",
+      "Default" : "test"
+    }
+  },
+  "Resources" : {
+    "WebServer": {
+      "Type": "AWS::EC2::Instance",
+      "Properties": {
+        "ImageId" : "F17-x86_64-gold",
+        "InstanceType" : "m1.large",
+        "KeyName" : "test",
+        "UserData" : "wordpress"
+      }
+    }
+  }
+}
+'''
 
 @attr(tag=['unit', 'resource', 'instance'])
 @attr(speed='fast')
@@ -40,6 +64,61 @@ class instancesTest(unittest.TestCase):
     def tearDown(self):
         self.m.UnsetStubs()
         print "instancesTest teardown complete"
+
+    def _setup_test_stack(self, stack_name):
+        t = template_format.parse(wp_template)
+        template = parser.Template(t)
+        stack = parser.Stack(utils.dummy_context(), stack_name, template,
+            stack_id=uuidutils.generate_uuid())
+        return (t, stack)
+
+    def _setup_test_instance(self, return_server, name, image_id=None):
+        stack_name = '%s_stack' % name
+        (t, stack) = self._setup_test_stack(stack_name)
+
+        t['Resources']['WebServer']['Properties']['ImageId'] =\
+        image_id or 'CentOS 5.2'
+        t['Resources']['WebServer']['Properties']['InstanceType'] =\
+        '256 MB Server'
+        instance = instances.Instance('%s_name' % name,
+            t['Resources']['WebServer'], stack)
+
+        self.m.StubOutWithMock(instance, 'nova')
+        instance.nova().MultipleTimes().AndReturn(self.fc)
+
+        instance.t = instance.stack.resolve_runtime_data(instance.t)
+
+        # need to resolve the template functions
+        server_userdata = instance._build_userdata(
+            instance.t['Properties']['UserData'])
+        instance.mime_string = "wordpress"
+        self.m.StubOutWithMock(self.fc.servers, 'create')
+        self.fc.servers.create(
+            image=1, flavor=1, key_name='test',
+            name='%s.%s' % (stack_name, instance.name),
+            security_groups=None,
+            userdata=server_userdata, scheduler_hints=None,
+            meta=None, nics=None, availability_zone=None).AndReturn(
+            return_server)
+
+        return instance
+
+    def _create_test_instance(self, return_server, name):
+        t = template_format.parse(wp_template)
+
+        stack_name = 'instance_create_test_stack'
+        template = parser.Template(t)
+        params = parser.Parameters(stack_name, template, {'KeyName': 'test'})
+        stack = parser.Stack(None, stack_name, template, params,
+            stack_id=uuidutils.generate_uuid())
+
+        t['Resources']['WebServer']['Properties']['ImageId'] = 'CentOS 5.2'
+        t['Resources']['WebServer']['Properties']['InstanceType'] =\
+        '256 MB Server'
+
+        instance = instances.Instance('create_instance_name',
+            t['Resources']['WebServer'], stack)
+        return instance
 
     def test_instance_create(self):
         f = open("%s/WordPress_Single_Instance_gold.template" % self.path)

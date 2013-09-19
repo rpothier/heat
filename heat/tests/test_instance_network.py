@@ -12,17 +12,17 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import unittest
+import mox
+
+from nose.plugins.attrib import attr
 
 from heat.tests.v1_1 import fakes
 from heat.engine.resources import instance as instances
 from heat.engine.resources import network_interface as network_interfaces
 from heat.common import template_format
 from heat.engine import parser
-from heat.engine import scheduler
 from heat.openstack.common import uuidutils
-from heat.tests.common import HeatTestCase
-from heat.tests.utils import setup_dummy_db
-
 
 wp_template = '''
 {
@@ -59,7 +59,6 @@ wp_template = '''
   }
 }
 '''
-
 
 wp_template_with_nic = '''
 {
@@ -122,6 +121,7 @@ class FakeQuantum(object):
                 'cidr': '10.10.0.0/24',
                 'id': '4156c7a5-e8c4-4aff-a6e1-8f3c7bc83861',
                 'enable_dhcp': False,
+
             }}
 
     def create_port(self, body=None):
@@ -142,11 +142,12 @@ class FakeQuantum(object):
             }}
 
 
-class instancesTest(HeatTestCase):
+@attr(tag=['unit', 'resource', 'instance'])
+@attr(speed='fast')
+class instancesTest(unittest.TestCase):
     def setUp(self):
-        super(instancesTest, self).setUp()
+        self.m = mox.Mox()
         self.fc = fakes.FakeClient()
-        setup_dummy_db()
 
     def _create_test_instance(self, return_server, name):
         stack_name = '%s_stack' % name
@@ -186,7 +187,7 @@ class instancesTest(HeatTestCase):
                 return_server)
         self.m.ReplayAll()
 
-        scheduler.TaskRunner(instance.create)()
+        self.assertEqual(instance.create(), None)
         return instance
 
     def _create_test_instance_with_nic(self, return_server, name):
@@ -232,17 +233,19 @@ class instancesTest(HeatTestCase):
                 return_server)
         self.m.ReplayAll()
 
+
         # create network interface
-        scheduler.TaskRunner(nic.create)()
+        self.assertEqual(nic.create(), None)
         stack.resources["nic1"] = nic
 
-        scheduler.TaskRunner(instance.create)()
+        self.assertEqual(instance.create(), None)
         return instance
+
 
     def test_instance_create(self):
         return_server = self.fc.servers.list()[1]
         instance = self._create_test_instance(return_server,
-                                              'test_instance_create')
+                                   'test_instance_create')
         # this makes sure the auto increment worked on instance creation
         self.assertTrue(instance.id > 0)
 
